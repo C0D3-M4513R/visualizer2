@@ -1,5 +1,6 @@
 use crate::analyzer;
 use std::thread;
+use cpal::HostId;
 use cpal::traits::*;
 
 #[derive(Debug, Default)]
@@ -66,8 +67,50 @@ impl CPalRecorder {
             thread::Builder::new()
                 .name("cpal-recorder".into())
                 .spawn(move || {
-                    let host = cpal::default_host();
-                    let device = host.default_input_device().expect("Can't acquire input device");
+                    let host = if let Some(hostname) = crate::CONFIG.get::<String>("capl.host"){
+                        cpal::available_hosts()
+                            .into_iter()
+                            .filter(|host|host.name() == hostname)
+                            .next()
+                            .map(|id|cpal::host_from_id(id).ok())
+                            .flatten()
+                            .unwrap_or_else(||{
+                                log::debug!("The specified Host could not be found. Using default.");
+                                cpal::default_host()
+                            })
+                    } else {
+                        let hosts = cpal::available_hosts()
+                            .iter()
+                            .map(HostId::name)
+                            .fold(String::new(), |mut s1, s2| {s1.push_str(s2); s1.push('\r'); s1.push('\n'); s1});
+                        log::debug!("Available hosts: {}", hosts);
+                        cpal::default_host()
+                    };
+
+                    let device = {
+                        if let Some(name) = crate::CONFIG.get::<String>("capl.device") {
+                            if let Ok(input_devices) = host.input_devices() {
+                                input_devices.filter(|item|if let Ok(device_name) = item.name() {device_name == name} else {false}).next()
+                            }else{
+                                log::warn!("Could not get input devices");
+                                None
+                            }
+                        } else {
+                            if let Ok(input_devices) = host.input_devices(){
+                                let devices = input_devices.map(|device| device.name())
+                                    .filter(Result::is_ok)
+                                    .map(Result::unwrap_or_default)
+                                    .filter(|s|!s.is_empty())
+                                    .fold(String::new(), |mut s1, s2| {s1.push_str(s2.as_str()); s1.push('\r'); s1.push('\n'); s1});
+                                log::debug!("Available input devices: {}", devices);
+                            }
+                            None
+                        }
+                        .unwrap_or_else(||{
+                            log::warn!("Could not get default input device");
+                            host.default_input_device().expect("No Input device found")
+                        })
+                    };
 
                     let config = cpal::StreamConfig {
                         channels: 2,
