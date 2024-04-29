@@ -1,6 +1,8 @@
 extern crate log;
 extern crate vis_core;
 
+use std::time::Duration;
+
 #[derive(Debug, Clone, Default)]
 pub struct AnalyzerResult {
     spectrum: vis_core::analyzer::Spectrum<Vec<f32>>,
@@ -43,6 +45,6 @@ fn main() {
             }
             println!("");
         });
-        std::thread::sleep_ms(30);
+        std::thread::sleep(Duration::from_micros(30));
     }
 }
